@@ -21,7 +21,7 @@ lucene-queryparser = { module = "org.apache.lucene:lucene-queryparser", version.
 lucene-facet = { module = "org.apache.lucene:lucene-facet", version.ref = "lucene" }
 
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
-opentelemetry-instrumentation-annotations = { module = "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations", version = "2.4.0" }
+opentelemetry-instrumentation-annotations = { module = "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations", version = "2.20.1" }
 
 springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version = "2.5.0" }
 
