@@ -50,8 +50,8 @@ dependencies {
     // Lombok & MapStruct
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
-    annotationProcessor(libs.mapstruct.processor)
     implementation(libs.mapstruct)
+    annotationProcessor(libs.mapstruct.processor)
     
     // Testing
     testImplementation(libs.spring.boot.starter.test)
