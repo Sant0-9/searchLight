@@ -10,8 +10,8 @@ COPY settings.gradle.kts .
 COPY build.gradle.kts .
 COPY gradle/libs.versions.toml gradle/
 
-# Ensure gradlew is executable
-RUN chmod +x gradlew
+# Ensure gradlew and wrapper jar are executable
+RUN chmod +x gradlew && chmod +x gradle/wrapper/gradle-wrapper.jar
 
 # Download dependencies
 RUN ./gradlew dependencies --no-daemon
