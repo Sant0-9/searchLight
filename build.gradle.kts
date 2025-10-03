@@ -47,11 +47,9 @@ dependencies {
     implementation(libs.rome)
     implementation(libs.onnxruntime)
     
-    // Lombok & MapStruct
+    // Lombok
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
-    implementation(libs.mapstruct)
-    annotationProcessor(libs.mapstruct.processor)
     
     // Testing
     testImplementation(libs.spring.boot.starter.test)
