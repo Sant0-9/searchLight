@@ -60,6 +60,9 @@ public class LuceneIndexer implements Indexer {
         config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
         config.setCommitOnClose(true);
         
+        // Use custom codec with HNSW parameters
+        config.setCodec(new SearchlightCodec(hnswM, hnswEfConstruction));
+        
         this.writer = new IndexWriter(directory, config);
         
         log.info("Lucene index initialized with {} documents", writer.getDocStats().numDocs);

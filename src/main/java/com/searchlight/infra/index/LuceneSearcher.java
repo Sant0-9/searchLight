@@ -80,43 +80,192 @@ public class LuceneSearcher implements Searcher {
                 return Collections.emptyList();
             }
             
-            Query luceneQuery = buildHybridQuery(query);
-            
-            int totalToFetch = query.getTopK() + query.getOffset();
-            TopDocs topDocs = searcher.search(luceneQuery, totalToFetch);
-            
-            List<SearchResult> results = new ArrayList<>();
-            int start = Math.min(query.getOffset(), topDocs.scoreDocs.length);
-            int end = Math.min(totalToFetch, topDocs.scoreDocs.length);
-            
-            for (int i = start; i < end; i++) {
-                ScoreDoc scoreDoc = topDocs.scoreDocs[i];
-                Document doc = searcher.doc(scoreDoc.doc);
-                
-                SearchResult result = SearchResult.builder()
-                        .id(doc.get("id"))
-                        .sourceId(doc.get("sourceId"))
-                        .title(doc.get("title"))
-                        .url(doc.get("url"))
-                        .snippet(createSnippet(doc.get("content"), 200))
-                        .score(scoreDoc.score)
-                        .source(doc.get("source"))
-                        .chunkIndex(doc.getField("chunkIndex") != null ? 
-                                doc.getField("chunkIndex").numericValue().intValue() : 0)
-                        .timestamp(doc.getField("timestamp") != null ? 
-                                Instant.ofEpochMilli(doc.getField("timestamp").numericValue().longValue()) : null)
-                        .metadata(new HashMap<>())
-                        .build();
-                
-                results.add(result);
-            }
-            
-            log.debug("Search returned {} results for query", results.size());
-            return results;
+            // Perform late-fusion hybrid search
+            return hybridLateFusion(query);
             
         } catch (IOException e) {
             log.error("Search failed", e);
             throw new RuntimeException("Search failed", e);
+        }
+    }
+    
+    /**
+     * Hybrid late-fusion scoring: run BM25 and KNN separately, normalize, and fuse.
+     */
+    private List<SearchResult> hybridLateFusion(SearchQuery query) throws IOException {
+        Map<String, SearchResult> resultsMap = new HashMap<>();
+        
+        // Run BM25 query if alpha < 1.0
+        if (query.getQueryText() != null && !query.getQueryText().isBlank() && query.getAlpha() < 1.0f) {
+            List<SearchResult> bm25Results = runBM25Search(query);
+            normalizeScores(bm25Results);
+            
+            for (SearchResult result : bm25Results) {
+                result.setKeywordScore(result.getScore());
+                result.setVectorScore(0.0f);
+                resultsMap.put(result.getId(), result);
+            }
+        }
+        
+        // Run KNN query if alpha > 0 and vector is present
+        if (query.getQueryVector() != null && query.getQueryVector().length == vectorDimension && query.getAlpha() > 0) {
+            List<SearchResult> knnResults = runKNNSearch(query);
+            normalizeScores(knnResults);
+            
+            for (SearchResult result : knnResults) {
+                if (resultsMap.containsKey(result.getId())) {
+                    // Merge with existing BM25 result
+                    SearchResult existing = resultsMap.get(result.getId());
+                    existing.setVectorScore(result.getScore());
+                } else {
+                    // New result from KNN only
+                    result.setVectorScore(result.getScore());
+                    result.setKeywordScore(0.0f);
+                    resultsMap.put(result.getId(), result);
+                }
+            }
+        }
+        
+        // Apply fusion: score = (1-alpha) * bm25 + alpha * knn
+        List<SearchResult> fusedResults = new ArrayList<>(resultsMap.values());
+        for (SearchResult result : fusedResults) {
+            float fusedScore = (1.0f - query.getAlpha()) * result.getKeywordScore() + 
+                              query.getAlpha() * result.getVectorScore();
+            result.setScore(fusedScore);
+        }
+        
+        // Sort by fused score descending
+        fusedResults.sort((a, b) -> Float.compare(b.getScore(), a.getScore()));
+        
+        // Apply offset and limit
+        int start = Math.min(query.getOffset(), fusedResults.size());
+        int end = Math.min(query.getOffset() + query.getTopK(), fusedResults.size());
+        
+        List<SearchResult> finalResults = fusedResults.subList(start, end);
+        log.debug("Hybrid search returned {} results (alpha={})", finalResults.size(), query.getAlpha());
+        
+        return finalResults;
+    }
+    
+    /**
+     * Run BM25 keyword search.
+     */
+    private List<SearchResult> runBM25Search(SearchQuery query) throws IOException {
+        try {
+            MultiFieldQueryParser parser = new MultiFieldQueryParser(
+                    new String[]{"title", "content", "keywords"},
+                    analyzer,
+                    Map.of("title", 2.0f, "content", 1.0f, "keywords", 1.5f)
+            );
+            Query textQuery = parser.parse(query.getQueryText());
+            
+            // Apply filters
+            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+            builder.add(textQuery, BooleanClause.Occur.MUST);
+            addFilters(builder, query);
+            
+            int fetchSize = Math.max(query.getTopK() * 2, 100); // Fetch more for fusion
+            TopDocs topDocs = searcher.search(builder.build(), fetchSize);
+            
+            return convertToResults(topDocs);
+            
+        } catch (ParseException e) {
+            log.warn("Failed to parse query text: {}", query.getQueryText(), e);
+            return Collections.emptyList();
+        }
+    }
+    
+    /**
+     * Run KNN vector search.
+     */
+    private List<SearchResult> runKNNSearch(SearchQuery query) throws IOException {
+        Query vectorQuery = new KnnFloatVectorQuery("vector", query.getQueryVector(), 
+                Math.max(query.getTopK() * 2, 100)); // Fetch more for fusion
+        
+        // Apply filters
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(vectorQuery, BooleanClause.Occur.MUST);
+        addFilters(builder, query);
+        
+        TopDocs topDocs = searcher.search(builder.build(), Math.max(query.getTopK() * 2, 100));
+        
+        return convertToResults(topDocs);
+    }
+    
+    /**
+     * Add filter clauses to query builder.
+     */
+    private void addFilters(BooleanQuery.Builder builder, SearchQuery query) {
+        if (query.getSourceFilter() != null) {
+            builder.add(new TermQuery(new Term("source", query.getSourceFilter())), 
+                    BooleanClause.Occur.FILTER);
+        }
+        
+        if (query.getAfterDate() != null) {
+            builder.add(LongPoint.newRangeQuery("timestamp", 
+                    query.getAfterDate().toEpochMilli(), Long.MAX_VALUE), 
+                    BooleanClause.Occur.FILTER);
+        }
+    }
+    
+    /**
+     * Convert Lucene TopDocs to SearchResults.
+     */
+    private List<SearchResult> convertToResults(TopDocs topDocs) throws IOException {
+        List<SearchResult> results = new ArrayList<>();
+        
+        for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
+            Document doc = searcher.doc(scoreDoc.doc);
+            
+            SearchResult result = SearchResult.builder()
+                    .id(doc.get("id"))
+                    .sourceId(doc.get("sourceId"))
+                    .title(doc.get("title"))
+                    .url(doc.get("url"))
+                    .snippet(createSnippet(doc.get("content"), 200))
+                    .score(scoreDoc.score)
+                    .source(doc.get("source"))
+                    .chunkIndex(doc.getField("chunkIndex") != null ? 
+                            doc.getField("chunkIndex").numericValue().intValue() : 0)
+                    .timestamp(doc.getField("timestamp") != null ? 
+                            Instant.ofEpochMilli(doc.getField("timestamp").numericValue().longValue()) : null)
+                    .metadata(new HashMap<>())
+                    .build();
+            
+            results.add(result);
+        }
+        
+        return results;
+    }
+    
+    /**
+     * Min-max normalize scores to [0, 1] range.
+     */
+    private void normalizeScores(List<SearchResult> results) {
+        if (results.isEmpty()) {
+            return;
+        }
+        
+        float minScore = Float.MAX_VALUE;
+        float maxScore = Float.MIN_VALUE;
+        
+        for (SearchResult result : results) {
+            minScore = Math.min(minScore, result.getScore());
+            maxScore = Math.max(maxScore, result.getScore());
+        }
+        
+        // Avoid division by zero
+        float range = maxScore - minScore;
+        if (range < 0.0001f) {
+            for (SearchResult result : results) {
+                result.setScore(1.0f);
+            }
+            return;
+        }
+        
+        for (SearchResult result : results) {
+            float normalized = (result.getScore() - minScore) / range;
+            result.setScore(normalized);
         }
     }
     
@@ -182,66 +331,6 @@ public class LuceneSearcher implements Searcher {
         } catch (IOException e) {
             log.error("Error closing searcher", e);
         }
-    }
-    
-    private Query buildHybridQuery(SearchQuery query) {
-        BooleanQuery.Builder builder = new BooleanQuery.Builder();
-        
-        // Keyword query (BM25)
-        if (query.getQueryText() != null && !query.getQueryText().isBlank() && query.getAlpha() < 1.0f) {
-            try {
-                MultiFieldQueryParser parser = new MultiFieldQueryParser(
-                        new String[]{"title", "content", "keywords"},
-                        analyzer,
-                        Map.of("title", 2.0f, "content", 1.0f, "keywords", 1.5f)
-                );
-                Query textQuery = parser.parse(query.getQueryText());
-                
-                if (query.getAlpha() > 0) {
-                    // Boost based on alpha
-                    float keywordBoost = (1.0f - query.getAlpha()) * 10;
-                    textQuery = new BoostQuery(textQuery, keywordBoost);
-                }
-                
-                builder.add(textQuery, BooleanClause.Occur.SHOULD);
-            } catch (ParseException e) {
-                log.warn("Failed to parse query text: {}", query.getQueryText(), e);
-            }
-        }
-        
-        // Vector query (KNN)
-        if (query.getQueryVector() != null && query.getQueryVector().length == vectorDimension && query.getAlpha() > 0) {
-            // Note: Lucene's KNN search is handled differently in production
-            // For now, we create a placeholder that will be replaced with actual KNN search
-            Query vectorQuery = new KnnFloatVectorQuery("vector", query.getQueryVector(), query.getTopK());
-            
-            if (query.getAlpha() < 1.0f) {
-                float vectorBoost = query.getAlpha() * 10;
-                vectorQuery = new BoostQuery(vectorQuery, vectorBoost);
-            }
-            
-            builder.add(vectorQuery, BooleanClause.Occur.SHOULD);
-        }
-        
-        // Filters
-        if (query.getSourceFilter() != null) {
-            builder.add(new TermQuery(new Term("source", query.getSourceFilter())), BooleanClause.Occur.FILTER);
-        }
-        
-        if (query.getAfterDate() != null) {
-            builder.add(LongPoint.newRangeQuery("timestamp", 
-                    query.getAfterDate().toEpochMilli(), Long.MAX_VALUE), 
-                    BooleanClause.Occur.FILTER);
-        }
-        
-        BooleanQuery booleanQuery = builder.build();
-        
-        // If no clauses, return match all
-        if (booleanQuery.clauses().isEmpty()) {
-            return new MatchAllDocsQuery();
-        }
-        
-        return booleanQuery;
     }
     
     private DocumentChunk documentToChunk(Document doc) {
