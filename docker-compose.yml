@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: searchlight-api
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SEARCHLIGHT_EMBEDDING_PROVIDER=http
+      - SEARCHLIGHT_EMBEDDING_URL=http://embedder:8000/embed
+      - SEARCHLIGHT_EMBEDDING_DIMENSION=384
+    volumes:
+      - index-data:/app/data
+    depends_on:
+      - embedder
+    networks:
+      - searchlight-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  embedder:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.embedder
+    container_name: searchlight-embedder
+    ports:
+      - "8000:8000"
+    networks:
+      - searchlight-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: searchlight-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - searchlight-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: searchlight-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources
+      - grafana-data:/var/lib/grafana
+    networks:
+      - searchlight-net
+    depends_on:
+      - prometheus
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: searchlight-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
+    networks:
+      - searchlight-net
+    depends_on:
+      - api
+
+volumes:
+  index-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  searchlight-net:
+    driver: bridge

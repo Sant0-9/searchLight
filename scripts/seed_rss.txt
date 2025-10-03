@@ -1,0 +1,4 @@
+# Sample RSS feeds for ingestion
+https://news.ycombinator.com/rss
+https://www.wired.com/feed/rss
+https://www.reddit.com/r/MachineLearning/.rss

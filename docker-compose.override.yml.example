@@ -1,0 +1,18 @@
+# Example override file for local development
+# Copy to docker-compose.override.yml and customize
+
+version: '3.8'
+
+services:
+  api:
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - JAVA_OPTS=-Xmx1g -Xms512m -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+    ports:
+      - "5005:5005"  # Debug port
+    volumes:
+      - ./logs:/app/logs
+
+  dashboard:
+    environment:
+      - NODE_ENV=development

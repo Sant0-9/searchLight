@@ -1,0 +1,86 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: searchlight
+  jackson:
+    default-property-inclusion: non_null
+
+searchlight:
+  index:
+    path: data/index
+    similarity: COSINE
+    hnsw:
+      m: 16
+      ef-construction: 100
+  
+  embedding:
+    provider: onnx  # http or onnx
+    url: http://localhost:8000/embed
+    dimension: 384
+    timeout: 30000
+    onnx:
+      model-path: ""
+      stub-mode: true
+  
+  chunker:
+    size: 512
+    overlap: 50
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.searchlight: INFO
+    org.apache.lucene: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+searchlight:
+  embedding:
+    provider: onnx
+
+logging:
+  level:
+    com.searchlight: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: ci
+
+searchlight:
+  embedding:
+    provider: onnx
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+searchlight:
+  embedding:
+    provider: http
+
+logging:
+  level:
+    com.searchlight: INFO

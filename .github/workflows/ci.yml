@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        java: [21]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up JDK ${{ matrix.java }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java }}
+        distribution: 'temurin'
+        cache: 'gradle'
+    
+    - name: Grant execute permission for gradlew
+      if: runner.os != 'Windows'
+      run: chmod +x gradlew
+    
+    - name: Build with Gradle
+      run: ./gradlew build --no-daemon --stacktrace
+    
+    - name: Run tests
+      run: ./gradlew test --no-daemon
+    
+    - name: Generate coverage report
+      run: ./gradlew jacocoTestReport --no-daemon
+    
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest'
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./build/reports/jacoco/test/jacocoTestReport.xml
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Archive test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.os }}
+        path: build/reports/tests/test/
+    
+    - name: Archive coverage results
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: build/reports/jacoco/test/html/
+
+  dashboard:
+    name: Build Dashboard
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: dashboard/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: dashboard
+      run: npm ci
+    
+    - name: Build dashboard
+      working-directory: dashboard
+      run: npm run build
+      env:
+        NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+    
+    - name: Archive dashboard build
+      uses: actions/upload-artifact@v4
+      with:
+        name: dashboard-build
+        path: dashboard/.next/
+
+  docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test, dashboard]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata for API
+      id: meta-api
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}/api
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push API image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta-api.outputs.tags }}
+        labels: ${{ steps.meta-api.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Extract metadata for Dashboard
+      id: meta-dashboard
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}/dashboard
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Dashboard image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./dashboard
+        file: ./dashboard/Dockerfile
+        push: true
+        tags: ${{ steps.meta-dashboard.outputs.tags }}
+        labels: ${{ steps.meta-dashboard.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

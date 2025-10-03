@@ -1,0 +1,10 @@
+searchlight:
+  index:
+    path: build/test-index
+  embedding:
+    provider: onnx
+    dimension: 384
+
+logging:
+  level:
+    com.searchlight: WARN
