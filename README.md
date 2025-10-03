@@ -95,6 +95,47 @@ make test
 make docker-up
 ```
 
+### Quick Demo
+
+Once the API is running (via `make dev` or `docker-compose up`), run the interactive demo:
+
+```bash
+make demo
+```
+
+This will:
+1. Ingest sample documents from Hacker News RSS
+2. Run search with `alpha=0.0` (pure BM25 keyword search)
+3. Run search with `alpha=1.0` (pure KNN vector search)
+4. Show how rankings differ based on the alpha parameter
+
+**Expected output:**
+```
+🔦 Searchlight Hybrid Search Demo
+====================================
+
+📥 Ingesting sample RSS feed (Hacker News)...
+✅ Indexed 15 documents, 73 chunks
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 Search 1: Pure Keyword (alpha=0.0, BM25 only)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [0.95] Best Programming Languages for 2025
+  [0.82] Learn to Code: A Beginner's Guide
+  [0.71] Programming Paradigms Explained
+  ...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 Search 2: Pure Vector (alpha=1.0, KNN only)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [0.91] Machine Learning Fundamentals
+  [0.87] Deep Learning in Practice
+  [0.79] Building Neural Networks
+  ...
+
+✅ Demo complete! Rankings differ based on alpha parameter.
+```
+
 ## 📖 API Documentation
 
 ### Swagger UI
@@ -112,19 +153,50 @@ curl -X POST http://localhost:8080/api/v1/search \
   -d '{
     "q": "machine learning",
     "k": 10,
-    "alpha": 0.5,
-    "filters": {
-      "source": "tech-blog"
-    }
+    "alpha": 0.5
   }'
 ```
 
+**Request Body (copy to Swagger UI):**
+```json
+{
+  "q": "machine learning neural networks",
+  "k": 5,
+  "alpha": 0.5
+}
+```
+
 **Parameters:**
-- `q` (string): Query text
-- `k` (int): Number of results (default: 10)
-- `alpha` (float 0-1): Hybrid weight (0=keyword only, 1=vector only, 0.5=balanced)
-- `filters.source` (string): Filter by source
-- `filters.after` (ISO timestamp): Filter by date
+- `q` (string, required): Query text
+- `k` (int, optional): Number of results (default: 10)
+- `alpha` (float 0-1, optional): Hybrid weight (default: 0.5)
+  - `0.0` = pure keyword search (BM25 only)
+  - `1.0` = pure vector search (KNN only)
+  - `0.5` = balanced hybrid search
+- `offset` (int, optional): Pagination offset (default: 0)
+
+**Sample Response:**
+```json
+{
+  "query": "machine learning neural networks",
+  "results": [
+    {
+      "id": "doc-1-chunk-0",
+      "sourceId": "doc-1",
+      "title": "Introduction to Neural Networks",
+      "url": "https://example.com/neural-networks",
+      "snippet": "Neural networks are the foundation of modern machine learning...",
+      "score": 0.85,
+      "keywordScore": 0.72,
+      "vectorScore": 0.91,
+      "source": "hacker-news",
+      "timestamp": "2025-10-03T10:30:00Z"
+    }
+  ],
+  "total": 1,
+  "took": 45
+}
+```
 
 ####  Ingest Documents
 ```bash
@@ -134,6 +206,27 @@ curl -X POST http://localhost:8080/api/v1/admin/ingest \
     "urls": ["https://news.ycombinator.com/rss"],
     "mode": "RSS"
   }'
+```
+
+**Request Body (copy to Swagger UI):**
+```json
+{
+  "urls": [
+    "https://news.ycombinator.com/rss",
+    "https://example.com/blog/feed.xml"
+  ],
+  "mode": "RSS"
+}
+```
+
+**Sample Response:**
+```json
+{
+  "message": "Ingestion completed",
+  "documentsProcessed": 25,
+  "chunksIndexed": 142,
+  "errors": 0
+}
 ```
 
 ####  Get Document by ID
