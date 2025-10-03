@@ -41,7 +41,7 @@ jobs:
     
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         files: ./build/reports/jacoco/test/jacocoTestReport.xml
         flags: unittests
