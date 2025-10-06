@@ -7,7 +7,7 @@ onnxruntime = "1.18.0"
 jsoup = "1.17.2"
 wiremock = "3.6.0"
 testcontainers = "1.19.8"
-assertj = "3.26.0"
+assertj = "3.27.6"
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "spring-boot" }
