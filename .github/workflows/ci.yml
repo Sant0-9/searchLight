@@ -49,14 +49,14 @@ jobs:
     
     - name: Archive test results
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: test-results-${{ matrix.os }}
         path: build/reports/tests/test/
     
     - name: Archive coverage results
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: coverage-report
         path: build/reports/jacoco/test/html/
@@ -87,7 +87,7 @@ jobs:
         NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
     
     - name: Archive dashboard build
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: dashboard-build
         path: dashboard/.next/
