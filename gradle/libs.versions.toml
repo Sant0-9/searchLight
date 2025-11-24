@@ -1,6 +1,6 @@
 [versions]
 spring-boot = "3.3.0"
-lucene = "9.11.1"
+lucene = "10.3.2"
 lombok = "1.18.32"
 mapstruct = "1.5.5"
 onnxruntime = "1.18.0"
