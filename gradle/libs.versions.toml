@@ -1,5 +1,5 @@
 [versions]
-spring-boot = "3.3.0"
+spring-boot = "4.0.0"
 lucene = "9.11.1"
 lombok = "1.18.32"
 mapstruct = "1.5.5"
