@@ -5,7 +5,7 @@ lombok = "1.18.32"
 mapstruct = "1.5.5"
 onnxruntime = "1.18.0"
 jsoup = "1.17.2"
-wiremock = "3.6.0"
+wiremock = "3.13.2"
 testcontainers = "1.19.8"
 assertj = "3.26.0"
 
