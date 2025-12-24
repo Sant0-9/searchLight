@@ -1,10 +1,11 @@
 searchlight:
   index:
-    path: build/test-index
+    path: build/test-index-e2e
   embedding:
     provider: onnx
     dimension: 384
 
 logging:
   level:
-    com.searchlight: WARN
+    com.searchlight: DEBUG
+    org.springframework: INFO

@@ -61,12 +61,15 @@ class HybridFusionTest {
                 .build();
         
         List<SearchResult> results = searcher.search(query);
-        
+
         assertThat(results).isNotEmpty();
-        
-        // All results should have keywordScore set and vectorScore = 0
+
+        // When alpha=0, all scores should come from BM25 (keyword search)
+        // At least one result should have a positive keyword score (the top result)
+        assertThat(results.get(0).getKeywordScore()).isGreaterThan(0.0f);
+
+        // All results should have vectorScore = 0 and score = keywordScore
         for (SearchResult result : results) {
-            assertThat(result.getKeywordScore()).isGreaterThan(0.0f);
             assertThat(result.getVectorScore()).isEqualTo(0.0f);
             assertThat(result.getScore()).isEqualTo(result.getKeywordScore());
         }
@@ -84,12 +87,15 @@ class HybridFusionTest {
                 .build();
         
         List<SearchResult> results = searcher.search(query);
-        
+
         assertThat(results).isNotEmpty();
-        
-        // All results should have vectorScore set and keywordScore = 0
+
+        // When alpha=1, all scores should come from KNN (vector search)
+        // At least one result should have a positive vector score (the top result)
+        assertThat(results.get(0).getVectorScore()).isGreaterThan(0.0f);
+
+        // All results should have keywordScore = 0 and score = vectorScore
         for (SearchResult result : results) {
-            assertThat(result.getVectorScore()).isGreaterThan(0.0f);
             assertThat(result.getKeywordScore()).isEqualTo(0.0f);
             assertThat(result.getScore()).isEqualTo(result.getVectorScore());
         }

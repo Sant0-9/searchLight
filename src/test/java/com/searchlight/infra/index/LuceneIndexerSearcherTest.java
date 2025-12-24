@@ -77,7 +77,7 @@ class LuceneIndexerSearcherTest {
         assertThat(results).isNotEmpty();
         // Document with "machine learning" should be in results
         assertThat(results.stream()
-                .anyMatch(r -> r.getContent().contains("Machine learning")))
+                .anyMatch(r -> r.getSnippet().contains("Machine learning")))
                 .isTrue();
     }
     

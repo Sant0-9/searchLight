@@ -19,12 +19,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.searchlight.app.SearchlightApplication;
+import org.springframework.test.annotation.DirtiesContext;
+
 /**
  * End-to-end smoke test with real components.
  */
-@SpringBootTest
+@SpringBootTest(classes = SearchlightApplication.class)
 @AutoConfigureMockMvc
-@ActiveProfiles("dev")
+@ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class EndToEndSmokeTest {
     
     @Autowired

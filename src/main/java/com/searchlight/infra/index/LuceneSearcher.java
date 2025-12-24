@@ -224,10 +224,12 @@ public class LuceneSearcher implements Searcher {
                     .url(doc.get("url"))
                     .snippet(createSnippet(doc.get("content"), 200))
                     .score(scoreDoc.score)
+                    .keywordScore(0.0f)
+                    .vectorScore(0.0f)
                     .source(doc.get("source"))
-                    .chunkIndex(doc.getField("chunkIndex") != null ? 
+                    .chunkIndex(doc.getField("chunkIndex") != null ?
                             doc.getField("chunkIndex").numericValue().intValue() : 0)
-                    .timestamp(doc.getField("timestamp") != null ? 
+                    .timestamp(doc.getField("timestamp") != null ?
                             Instant.ofEpochMilli(doc.getField("timestamp").numericValue().longValue()) : null)
                     .metadata(new HashMap<>())
                     .build();
@@ -272,20 +274,23 @@ public class LuceneSearcher implements Searcher {
     @Override
     public Optional<DocumentChunk> getById(String id) {
         try {
+            // Reopen reader to get latest changes
+            reopenReader();
+
             if (searcher == null) {
                 return Optional.empty();
             }
-            
+
             Query query = new TermQuery(new Term("id", id));
             TopDocs topDocs = searcher.search(query, 1);
-            
+
             if (topDocs.scoreDocs.length == 0) {
                 return Optional.empty();
             }
-            
+
             Document doc = searcher.doc(topDocs.scoreDocs[0].doc);
             return Optional.of(documentToChunk(doc));
-            
+
         } catch (IOException e) {
             log.error("Failed to get document by id {}", id, e);
             return Optional.empty();
