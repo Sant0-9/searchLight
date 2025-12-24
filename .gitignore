@@ -27,3 +27,16 @@ dashboard/.env*.local
 
 # Test
 .testcontainers/
+
+# Local-only docs (removed from GitHub, kept locally)
+ARCHITECTURE.md
+CHANGELOG.md
+CONTRIBUTING.md
+DELIVERY_SUMMARY.md
+DEPLOYMENT.md
+GET_STARTED.md
+IMPLEMENTATION_SUMMARY.md
+INDEX.md
+PROJECT_SUMMARY.md
+QUICKSTART.md
+VERIFICATION.md
